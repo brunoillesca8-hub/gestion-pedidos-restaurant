@@ -2,6 +2,17 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Category, Product, Order, OrderStatus, OrderItem, ViewRole, RestaurantSettings } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS } from '../data/initialData';
 import { playOrderChime } from '../utils/soundAlert';
+import {
+  initTursoClient,
+  fetchOrdersFromTurso,
+  saveOrderToTurso,
+  updateOrderStatusInTurso,
+  fetchProductsFromTurso,
+  fetchCategoriesFromTurso,
+  fetchSettingsFromTurso,
+  updateSettingsInTurso,
+  DEFAULT_SETTINGS
+} from '../services/tursoService';
 
 interface OrderContextType {
   restaurantSettings: RestaurantSettings;
@@ -45,14 +56,6 @@ const STORAGE_KEYS = {
   TABLE: 'restaurant_demo_table_v1',
   KDS_AUTH: 'restaurant_demo_kds_auth_v1',
   ADMIN_AUTH: 'restaurant_demo_admin_auth_v1'
-};
-
-const DEFAULT_SETTINGS: RestaurantSettings = {
-  name: 'Café & Bistró Bellavista',
-  tagline: 'Especialidad & Pastelería',
-  admin_pin: '1234',
-  kds_pin: '12345',
-  currency_symbol: '$'
 };
 
 export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -122,71 +125,69 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [newOrderAlertId, setNewOrderAlertId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Mantener los IDs de pedidos conocidos para detectar nuevas comandas desde otros dispositivos
+  // Registro de IDs conocidos para alertar con timbre en el KDS
   const knownOrderIdsRef = useRef<Set<string>>(new Set(orders.map(o => o.id)));
 
-  // Cargar datos desde la API / Turso DB con prevención estricta de caché
+  // Cargar datos directamente desde Turso Cloud
   const fetchRemoteData = useCallback(async (isBackgroundPoll = false) => {
     try {
       if (!isBackgroundPoll) setIsLoading(true);
 
-      const timestamp = Date.now();
-      const [settingsRes, catRes, prodRes, ordRes] = await Promise.allSettled([
-        fetch(`/api/settings?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)),
-        fetch(`/api/categories?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)),
-        fetch(`/api/products?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)),
-        fetch(`/api/orders?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null))
+      const [remoteOrders, remoteProducts, remoteCategories, remoteSettings] = await Promise.all([
+        fetchOrdersFromTurso().catch(() => null),
+        fetchProductsFromTurso().catch(() => null),
+        fetchCategoriesFromTurso().catch(() => null),
+        fetchSettingsFromTurso().catch(() => null)
       ]);
 
-      if (settingsRes.status === 'fulfilled' && settingsRes.value && typeof settingsRes.value === 'object') {
-        setRestaurantSettings(prev => ({ ...prev, ...settingsRes.value }));
+      if (remoteSettings) {
+        setRestaurantSettings(remoteSettings);
       }
-      if (catRes.status === 'fulfilled' && Array.isArray(catRes.value) && catRes.value.length > 0) {
-        setCategories(catRes.value);
+      if (remoteCategories && remoteCategories.length > 0) {
+        setCategories(remoteCategories);
       }
-      if (prodRes.status === 'fulfilled' && Array.isArray(prodRes.value) && prodRes.value.length > 0) {
-        setProducts(prodRes.value);
+      if (remoteProducts && remoteProducts.length > 0) {
+        setProducts(remoteProducts);
       }
 
-      if (ordRes.status === 'fulfilled' && Array.isArray(ordRes.value)) {
-        const remoteOrders: Order[] = ordRes.value;
-
-        // Detectar si hay alguna comanda que no estaba en el conjunto de comandas conocidas
+      if (remoteOrders && Array.isArray(remoteOrders)) {
+        // Detectar si hay una comanda nueva que vino de otro dispositivo
         const brandNewOrders = remoteOrders.filter(ro => !knownOrderIdsRef.current.has(ro.id));
 
         if (brandNewOrders.length > 0 && isBackgroundPoll) {
           const newest = brandNewOrders[0];
-          console.log('🔔 ¡NUEVA COMANDA ENTRANTE DESDE LA NUBE TURSO!', newest.id);
+          console.log('🔔 ¡NUEVA COMANDA DETECTADA EN TURSO!', newest.id);
           setNewOrderAlertId(newest.id);
           playOrderChime();
         }
 
-        // Actualizar el conjunto de IDs conocidos
         remoteOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
         setOrders(remoteOrders);
       }
-    } catch (e) {
-      console.warn('Error al sincronizar con Turso API:', e);
+    } catch (err) {
+      console.warn('Sincronización Turso en segundo plano:', err);
     } finally {
       if (!isBackgroundPoll) setIsLoading(false);
     }
   }, []);
 
-  // Fetch inicial
+  // Inicializar tablas en Turso y primer fetch
   useEffect(() => {
-    fetchRemoteData(false);
+    initTursoClient().then(() => {
+      fetchRemoteData(false);
+    });
   }, [fetchRemoteData]);
 
-  // POLLING EN TIEMPO REAL ACTIVO (Cada 2 segundos)
+  // POLLING EN VIVO ULTRA RÁPIDO (Cada 1.5 segundos) para sincronización entre dispositivos
   useEffect(() => {
     const interval = setInterval(() => {
       fetchRemoteData(true);
-    }, 2000);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [fetchRemoteData]);
 
-  // Actualizar Ajustes del Restaurante
+  // Actualizar Ajustes
   const updateRestaurantSettings = useCallback(async (newSettings: Partial<RestaurantSettings>) => {
     setRestaurantSettings(prev => {
       const updated = { ...prev, ...newSettings };
@@ -196,13 +197,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return updated;
     });
 
-    try {
-      await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings)
-      });
-    } catch {}
+    await updateSettingsInTurso(newSettings);
   }, []);
 
   // Detección de mesa por parámetro URL
@@ -226,31 +221,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem(STORAGE_KEYS.TABLE, table);
   };
 
-  // Persistir cambios en localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(restaurantSettings));
-    } catch {}
-  }, [restaurantSettings]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
-    } catch {}
-  }, [categories]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    } catch {}
-  }, [products]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
-    } catch {}
-  }, [orders]);
-
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.ROLE, currentRole);
@@ -269,7 +239,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, [isAdminAuthenticated]);
 
-  // Crear nuevo pedido (Celular ➔ Base de Datos Turso en la nube)
+  // Crear nuevo pedido (Guarda directamente en Turso Cloud)
   const createOrder = useCallback(async (
     table: string | number,
     items: OrderItem[],
@@ -290,19 +260,8 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     knownOrderIdsRef.current.add(newOrder.id);
     setOrders(prev => [newOrder, ...prev]);
 
-    // Guardar en Turso DB vía API
-    try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newOrder)
-      });
-      if (!res.ok) {
-        console.error('Error al guardar en /api/orders:', await res.text());
-      }
-    } catch (e) {
-      console.warn('Error de red al enviar a la API:', e);
-    }
+    // Guardar DIRECTAMENTE en Turso Database
+    await saveOrderToTurso(newOrder);
 
     return newOrder;
   }, []);
@@ -313,13 +272,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map(order => (order.id === orderId ? { ...order, status } : order))
     );
 
-    try {
-      await fetch(`/api/orders`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: orderId, status })
-      });
-    } catch {}
+    await updateOrderStatusInTurso(orderId, status);
   }, []);
 
   // Cambiar disponibilidad de producto
@@ -329,14 +282,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         prod.id === productId ? { ...prod, is_available: !prod.is_available } : prod
       )
     );
-
-    try {
-      await fetch(`/api/products`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: productId, toggleAvailabilityOnly: true })
-      });
-    } catch {}
   }, []);
 
   // CRUD Productos
@@ -346,79 +291,32 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       id: `prod-${Date.now()}`
     };
     setProducts(prev => [newProduct, ...prev]);
-
-    try {
-      await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProduct)
-      });
-    } catch {}
   }, []);
 
   const updateProduct = useCallback(async (product: Product) => {
     setProducts(prev => prev.map(p => (p.id === product.id ? product : p)));
-
-    try {
-      await fetch('/api/products', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(product)
-      });
-    } catch {}
   }, []);
 
   const deleteProduct = useCallback(async (productId: string) => {
     setProducts(prev => prev.filter(p => p.id !== productId));
-
-    try {
-      await fetch(`/api/products?id=${productId}`, {
-        method: 'DELETE'
-      });
-    } catch {}
   }, []);
 
   // CRUD Categorías
   const addCategory = useCallback(async (catData: Omit<Category, 'id' | 'order_index'>) => {
-    let newCategory: Category;
-    setCategories(prev => {
-      newCategory = {
-        ...catData,
-        id: `cat-${Date.now()}`,
-        order_index: prev.length + 1
-      };
-      return [...prev, newCategory];
-    });
-
-    try {
-      await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCategory!)
-      });
-    } catch {}
-  }, []);
+    const newCategory: Category = {
+      ...catData,
+      id: `cat-${Date.now()}`,
+      order_index: categories.length + 1
+    };
+    setCategories(prev => [...prev, newCategory]);
+  }, [categories]);
 
   const updateCategory = useCallback(async (category: Category) => {
     setCategories(prev => prev.map(c => (c.id === category.id ? category : c)));
-
-    try {
-      await fetch('/api/categories', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(category)
-      });
-    } catch {}
   }, []);
 
   const deleteCategory = useCallback(async (categoryId: string) => {
     setCategories(prev => prev.filter(c => c.id !== categoryId));
-
-    try {
-      await fetch(`/api/categories?id=${categoryId}`, {
-        method: 'DELETE'
-      });
-    } catch {}
   }, []);
 
   // Reiniciar datos de demo
@@ -428,14 +326,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setProducts(INITIAL_PRODUCTS);
     setOrders(INITIAL_ORDERS);
     knownOrderIdsRef.current = new Set(INITIAL_ORDERS.map(o => o.id));
-    localStorage.removeItem(STORAGE_KEYS.SETTINGS);
-    localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
-    localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
-    localStorage.removeItem(STORAGE_KEYS.ORDERS);
-
-    try {
-      await fetch('/api/reset-demo', { method: 'POST' });
-    } catch {}
   }, []);
 
   const clearNewOrderAlert = () => setNewOrderAlertId(null);
