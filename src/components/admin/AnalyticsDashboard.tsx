@@ -7,9 +7,8 @@ import {
   TrendingUp,
   Award,
   CheckCircle,
-  Clock,
-  PieChart as PieIcon,
-  BarChart3
+  BarChart3,
+  PieChart as PieIcon
 } from 'lucide-react';
 import {
   AreaChart,
@@ -23,8 +22,7 @@ import {
   Bar,
   PieChart,
   Pie,
-  Cell,
-  Legend
+  Cell
 } from 'recharts';
 
 const COLORS = ['#c27961', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
@@ -217,7 +215,7 @@ export const AnalyticsDashboard: React.FC = () => {
                   tickFormatter={(v) => `$${v / 1000}k`}
                 />
                 <Tooltip
-                  formatter={(val: number | undefined) => [formatCurrency(val ?? 0), 'Ventas']}
+                  formatter={(val: any) => [formatCurrency(Number(val) || 0), 'Ventas']}
                   labelFormatter={(l) => `Horario: ${l}`}
                   contentStyle={{
                     backgroundColor: '#262220',
@@ -274,7 +272,7 @@ export const AnalyticsDashboard: React.FC = () => {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(val: number | undefined) => [formatCurrency(val ?? 0), 'Ventas']}
+                    formatter={(val: any) => [formatCurrency(Number(val) || 0), 'Ventas']}
                     contentStyle={{
                       backgroundColor: '#262220',
                       color: '#fff',
@@ -334,7 +332,7 @@ export const AnalyticsDashboard: React.FC = () => {
                   tickFormatter={(val) => (val.length > 20 ? `${val.substring(0, 18)}...` : val)}
                 />
                 <Tooltip
-                  formatter={(val: number | undefined) => [`${val ?? 0} unidades vendidas`, 'Cantidad']}
+                  formatter={(val: any) => [`${val} unidades vendidas`, 'Cantidad']}
                   contentStyle={{
                     backgroundColor: '#262220',
                     color: '#fff',
