@@ -31,6 +31,7 @@ interface OrderContextType {
   newOrderAlertId: string | null;
   clearNewOrderAlert: () => void;
   isLoading: boolean;
+  manualRefreshOrders: () => Promise<void>;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -121,50 +122,51 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [newOrderAlertId, setNewOrderAlertId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Referencia a las órdenes actuales para comparar en el polling en tiempo real
-  const ordersRef = useRef<Order[]>(orders);
-  useEffect(() => {
-    ordersRef.current = orders;
-  }, [orders]);
+  // Mantener los IDs de pedidos conocidos para detectar nuevas comandas desde otros dispositivos
+  const knownOrderIdsRef = useRef<Set<string>>(new Set(orders.map(o => o.id)));
 
-  // Cargar datos iniciales desde la API / Turso DB
+  // Cargar datos desde la API / Turso DB con prevención estricta de caché
   const fetchRemoteData = useCallback(async (isBackgroundPoll = false) => {
     try {
       if (!isBackgroundPoll) setIsLoading(true);
 
+      const timestamp = Date.now();
       const [settingsRes, catRes, prodRes, ordRes] = await Promise.allSettled([
-        fetch('/api/settings').then(r => (r.ok ? r.json() : null)),
-        fetch('/api/categories').then(r => (r.ok ? r.json() : null)),
-        fetch('/api/products').then(r => (r.ok ? r.json() : null)),
-        fetch('/api/orders').then(r => (r.ok ? r.json() : null))
+        fetch(`/api/settings?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)),
+        fetch(`/api/categories?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)),
+        fetch(`/api/products?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)),
+        fetch(`/api/orders?t=${timestamp}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null))
       ]);
 
-      if (settingsRes.status === 'fulfilled' && settingsRes.value) {
+      if (settingsRes.status === 'fulfilled' && settingsRes.value && typeof settingsRes.value === 'object') {
         setRestaurantSettings(prev => ({ ...prev, ...settingsRes.value }));
       }
-      if (catRes.status === 'fulfilled' && catRes.value && catRes.value.length > 0) {
+      if (catRes.status === 'fulfilled' && Array.isArray(catRes.value) && catRes.value.length > 0) {
         setCategories(catRes.value);
       }
-      if (prodRes.status === 'fulfilled' && prodRes.value && prodRes.value.length > 0) {
+      if (prodRes.status === 'fulfilled' && Array.isArray(prodRes.value) && prodRes.value.length > 0) {
         setProducts(prodRes.value);
       }
-      if (ordRes.status === 'fulfilled' && ordRes.value) {
+
+      if (ordRes.status === 'fulfilled' && Array.isArray(ordRes.value)) {
         const remoteOrders: Order[] = ordRes.value;
-        const currentIds = new Set(ordersRef.current.map(o => o.id));
 
-        // Detectar si hay una comanda nueva que vino de otro dispositivo (ej. celular a PC)
-        const newlyArrivedOrder = remoteOrders.find(ro => !currentIds.has(ro.id));
+        // Detectar si hay alguna comanda que no estaba en el conjunto de comandas conocidas
+        const brandNewOrders = remoteOrders.filter(ro => !knownOrderIdsRef.current.has(ro.id));
 
-        if (newlyArrivedOrder && isBackgroundPoll) {
-          console.log('🔔 Nueva comanda detectada desde la nube:', newlyArrivedOrder.id);
-          setNewOrderAlertId(newlyArrivedOrder.id);
+        if (brandNewOrders.length > 0 && isBackgroundPoll) {
+          const newest = brandNewOrders[0];
+          console.log('🔔 ¡NUEVA COMANDA ENTRANTE DESDE LA NUBE TURSO!', newest.id);
+          setNewOrderAlertId(newest.id);
           playOrderChime();
         }
 
+        // Actualizar el conjunto de IDs conocidos
+        remoteOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
         setOrders(remoteOrders);
       }
-    } catch {
-      // Usar estado local si está offline
+    } catch (e) {
+      console.warn('Error al sincronizar con Turso API:', e);
     } finally {
       if (!isBackgroundPoll) setIsLoading(false);
     }
@@ -175,12 +177,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     fetchRemoteData(false);
   }, [fetchRemoteData]);
 
-  // POLLING EN TIEMPO REAL ENTRE DISPOSITIVOS (Celular ➔ Computador / Tablet)
+  // POLLING EN TIEMPO REAL ACTIVO (Cada 2 segundos)
   useEffect(() => {
-    // Polling cada 2.5 segundos para que la cocina reciba inmediatamente los pedidos de los celulares
     const interval = setInterval(() => {
       fetchRemoteData(true);
-    }, 2500);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, [fetchRemoteData]);
@@ -192,11 +193,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
       } catch {}
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_SETTINGS', payload: updated });
-        channel.close();
-      }
       return updated;
     });
 
@@ -209,7 +205,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, []);
 
-  // Detección de mesa por parámetro URL (ej: ?mesa=12 o ?table=12)
+  // Detección de mesa por parámetro URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mesaParam = params.get('mesa') || params.get('table');
@@ -229,44 +225,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTableNumberState(table);
     localStorage.setItem(STORAGE_KEYS.TABLE, table);
   };
-
-  // BroadcastChannel para pestañas locales
-  useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return;
-
-    const channel = new BroadcastChannel('restaurant_live_sync_channel');
-
-    channel.onmessage = (event) => {
-      const { type, payload } = event.data;
-      if (type === 'NEW_ORDER') {
-        setOrders(prev => {
-          if (prev.some(o => o.id === payload.id)) return prev;
-          return [payload, ...prev];
-        });
-        setNewOrderAlertId(payload.id);
-        playOrderChime();
-      } else if (type === 'UPDATE_STATUS') {
-        setOrders(prev =>
-          prev.map(o => (o.id === payload.orderId ? { ...o, status: payload.status } : o))
-        );
-      } else if (type === 'UPDATE_SETTINGS') {
-        setRestaurantSettings(payload);
-      } else if (type === 'UPDATE_PRODUCTS') {
-        setProducts(payload);
-      } else if (type === 'UPDATE_CATEGORIES') {
-        setCategories(payload);
-      } else if (type === 'RESET_DATA') {
-        setRestaurantSettings(DEFAULT_SETTINGS);
-        setCategories(INITIAL_CATEGORIES);
-        setProducts(INITIAL_PRODUCTS);
-        setOrders(INITIAL_ORDERS);
-      }
-    };
-
-    return () => {
-      channel.close();
-    };
-  }, []);
 
   // Persistir cambios en localStorage
   useEffect(() => {
@@ -328,27 +286,22 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       items
     };
 
-    // Actualizar estado local
+    // Registrar como conocido localmente
+    knownOrderIdsRef.current.add(newOrder.id);
     setOrders(prev => [newOrder, ...prev]);
-    setNewOrderAlertId(newOrder.id);
-    playOrderChime();
 
-    // Notificar a otras pestañas
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel('restaurant_live_sync_channel');
-      channel.postMessage({ type: 'NEW_ORDER', payload: newOrder });
-      channel.close();
-    }
-
-    // Guardar en Turso DB vía API para que el computador lo reciba
+    // Guardar en Turso DB vía API
     try {
-      await fetch('/api/orders', {
+      const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newOrder)
       });
+      if (!res.ok) {
+        console.error('Error al guardar en /api/orders:', await res.text());
+      }
     } catch (e) {
-      console.warn('Error enviando a la API:', e);
+      console.warn('Error de red al enviar a la API:', e);
     }
 
     return newOrder;
@@ -359,12 +312,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setOrders(prev =>
       prev.map(order => (order.id === orderId ? { ...order, status } : order))
     );
-
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel('restaurant_live_sync_channel');
-      channel.postMessage({ type: 'UPDATE_STATUS', payload: { orderId, status } });
-      channel.close();
-    }
 
     try {
       await fetch(`/api/orders`, {
@@ -377,17 +324,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Cambiar disponibilidad de producto
   const toggleProductAvailability = useCallback(async (productId: string) => {
-    setProducts(prev => {
-      const updated = prev.map(prod =>
+    setProducts(prev =>
+      prev.map(prod =>
         prod.id === productId ? { ...prod, is_available: !prod.is_available } : prod
-      );
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_PRODUCTS', payload: updated });
-        channel.close();
-      }
-      return updated;
-    });
+      )
+    );
 
     try {
       await fetch(`/api/products`, {
@@ -404,15 +345,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...newProdData,
       id: `prod-${Date.now()}`
     };
-    setProducts(prev => {
-      const updated = [newProduct, ...prev];
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_PRODUCTS', payload: updated });
-        channel.close();
-      }
-      return updated;
-    });
+    setProducts(prev => [newProduct, ...prev]);
 
     try {
       await fetch('/api/products', {
@@ -424,15 +357,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const updateProduct = useCallback(async (product: Product) => {
-    setProducts(prev => {
-      const updated = prev.map(p => (p.id === product.id ? product : p));
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_PRODUCTS', payload: updated });
-        channel.close();
-      }
-      return updated;
-    });
+    setProducts(prev => prev.map(p => (p.id === product.id ? product : p)));
 
     try {
       await fetch('/api/products', {
@@ -444,15 +369,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const deleteProduct = useCallback(async (productId: string) => {
-    setProducts(prev => {
-      const updated = prev.filter(p => p.id !== productId);
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_PRODUCTS', payload: updated });
-        channel.close();
-      }
-      return updated;
-    });
+    setProducts(prev => prev.filter(p => p.id !== productId));
 
     try {
       await fetch(`/api/products?id=${productId}`, {
@@ -470,13 +387,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         id: `cat-${Date.now()}`,
         order_index: prev.length + 1
       };
-      const updated = [...prev, newCategory];
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_CATEGORIES', payload: updated });
-        channel.close();
-      }
-      return updated;
+      return [...prev, newCategory];
     });
 
     try {
@@ -489,15 +400,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const updateCategory = useCallback(async (category: Category) => {
-    setCategories(prev => {
-      const updated = prev.map(c => (c.id === category.id ? category : c));
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_CATEGORIES', payload: updated });
-        channel.close();
-      }
-      return updated;
-    });
+    setCategories(prev => prev.map(c => (c.id === category.id ? category : c)));
 
     try {
       await fetch('/api/categories', {
@@ -509,15 +412,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const deleteCategory = useCallback(async (categoryId: string) => {
-    setCategories(prev => {
-      const updated = prev.filter(c => c.id !== categoryId);
-      if (typeof BroadcastChannel !== 'undefined') {
-        const channel = new BroadcastChannel('restaurant_live_sync_channel');
-        channel.postMessage({ type: 'UPDATE_CATEGORIES', payload: updated });
-        channel.close();
-      }
-      return updated;
-    });
+    setCategories(prev => prev.filter(c => c.id !== categoryId));
 
     try {
       await fetch(`/api/categories?id=${categoryId}`, {
@@ -532,16 +427,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCategories(INITIAL_CATEGORIES);
     setProducts(INITIAL_PRODUCTS);
     setOrders(INITIAL_ORDERS);
+    knownOrderIdsRef.current = new Set(INITIAL_ORDERS.map(o => o.id));
     localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
     localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
     localStorage.removeItem(STORAGE_KEYS.ORDERS);
-
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel('restaurant_live_sync_channel');
-      channel.postMessage({ type: 'RESET_DATA', payload: null });
-      channel.close();
-    }
 
     try {
       await fetch('/api/reset-demo', { method: 'POST' });
@@ -549,6 +439,10 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const clearNewOrderAlert = () => setNewOrderAlertId(null);
+
+  const manualRefreshOrders = useCallback(async () => {
+    await fetchRemoteData(false);
+  }, [fetchRemoteData]);
 
   return (
     <OrderContext.Provider
@@ -579,7 +473,8 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         resetToSeedData,
         newOrderAlertId,
         clearNewOrderAlert,
-        isLoading
+        isLoading,
+        manualRefreshOrders
       }}
     >
       {children}

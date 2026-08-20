@@ -1,8 +1,8 @@
 import { createClient } from '@libsql/client';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS } from '../src/data/initialData';
 
-const url = process.env.TURSO_DATABASE_URL || 'file:local.db';
-const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
+const url = process.env.TURSO_DATABASE_URL || 'libsql://pedidos-restaurant-brunoillesca.aws-us-east-1.turso.io';
+const authToken = process.env.TURSO_AUTH_TOKEN || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODcyNDc3MzQsImlkIjoiMDFhMDIwNDAtYjIwMS03MWQ2LThkMDMtNWM4NmVmMDlhMDM2Iiwia2lkIjoieUZRUkNaUVhCXzZOZ3JSeHdwOXEtRzNNY3hmMkVZa2xDS0dweXlHV3E3QSIsInJpZCI6ImNjZDQ2OTgyLWIyZDktNGE5Mi1hYmJkLTQzMzU5MTc1YmViYyJ9.ttBRSYz8_IdQ7vuv-8AuhQVq6gadp4bJUN_xNuJiihfGgDlPTXVfp8EWzWiQkLQWRJzSIhZ5QDzB0lKqAhBlAA';
 
 export const db = createClient({
   url,
@@ -136,6 +136,6 @@ export async function ensureDatabaseReady() {
       }
     }
   } catch (err) {
-    console.error('Error ensuring DB in serverless:', err);
+    console.error('Error al asegurar la base de datos Turso:', err);
   }
 }

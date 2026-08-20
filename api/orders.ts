@@ -1,7 +1,16 @@
 import { db, ensureDatabaseReady } from './_db';
 
 export default async function handler(req: any, res: any) {
-  await ensureDatabaseReady();
+  // Desactivar cualquier caché de navegador o de Vercel Edge para que los pedidos sean 100% en tiempo real
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  try {
+    await ensureDatabaseReady();
+  } catch (dbErr: any) {
+    console.error('Error al inicializar tablas en orders:', dbErr);
+  }
 
   if (req.method === 'GET') {
     try {
@@ -10,7 +19,7 @@ export default async function handler(req: any, res: any) {
 
       const orders = ordersRes.rows.map(o => {
         const orderItems = itemsRes.rows
-          .filter(item => item.order_id === o.id)
+          .filter(item => String(item.order_id) === String(o.id))
           .map(it => ({
             id: String(it.id),
             order_id: String(it.order_id),
@@ -35,22 +44,27 @@ export default async function handler(req: any, res: any) {
 
       return res.status(200).json(orders);
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      console.error('Error en GET /api/orders:', err);
+      return res.status(500).json({ error: err.message || 'Error al obtener comandas' });
     }
   }
 
   if (req.method === 'POST') {
     try {
       const newOrder = req.body;
+      if (!newOrder || !newOrder.id) {
+        return res.status(400).json({ error: 'Datos de orden incompletos' });
+      }
+
       await db.execute({
         sql: 'INSERT INTO orders (id, table_number, general_notes, total_amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
         args: [
           newOrder.id,
           String(newOrder.table_number),
           newOrder.general_notes || '',
-          newOrder.total_amount,
-          newOrder.status,
-          newOrder.created_at
+          Number(newOrder.total_amount) || 0,
+          newOrder.status || 'pendiente',
+          newOrder.created_at || new Date().toISOString()
         ]
       });
 
@@ -60,19 +74,21 @@ export default async function handler(req: any, res: any) {
           args: [
             it.id || `item-${Date.now()}-${Math.random()}`,
             newOrder.id,
-            it.product_id,
-            it.product_name,
-            it.quantity,
-            it.unit_price,
+            it.product_id || '',
+            it.product_name || '',
+            Number(it.quantity) || 1,
+            Number(it.unit_price) || 0,
             it.item_notes || '',
-            it.subtotal
+            Number(it.subtotal) || 0
           ]
         });
       }
 
+      console.log('✅ Comanda insertada en Turso con éxito:', newOrder.id);
       return res.status(201).json(newOrder);
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      console.error('Error en POST /api/orders:', err);
+      return res.status(500).json({ error: err.message || 'Error al guardar comanda en Turso' });
     }
   }
 
@@ -85,6 +101,7 @@ export default async function handler(req: any, res: any) {
       });
       return res.status(200).json({ id, status });
     } catch (err: any) {
+      console.error('Error en PATCH /api/orders:', err);
       return res.status(500).json({ error: err.message });
     }
   }
