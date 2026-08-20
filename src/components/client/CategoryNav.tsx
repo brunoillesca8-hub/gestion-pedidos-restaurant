@@ -24,7 +24,6 @@ export const CategoryNav: React.FC<CategoryNavProps> = ({
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto scroll activo al centro en dispositivos móviles
   useEffect(() => {
     if (activeTabRef.current && containerRef.current) {
       const container = containerRef.current;
@@ -43,22 +42,22 @@ export const CategoryNav: React.FC<CategoryNavProps> = ({
   const activeCategories = categories.filter(c => c.is_active);
 
   return (
-    <nav className="sticky top-[108px] z-20 bg-[#FAF8F5]/95 backdrop-blur-md py-2.5 border-b border-warmgray-200/80 shadow-xs">
+    <nav className="sticky top-[72px] z-20 bg-[#FAF8F5]/95 backdrop-blur-md py-1.5 border-b border-warmgray-200/70 shadow-2xs">
       <div
         ref={containerRef}
-        className="max-w-md md:max-w-4xl mx-auto px-4 flex items-center space-x-2 overflow-x-auto no-scrollbar scroll-smooth"
+        className="max-w-4xl mx-auto px-2 flex items-center space-x-1.5 overflow-x-auto no-scrollbar scroll-smooth"
       >
         {/* Opción Todos */}
         <button
           onClick={() => onSelectCategory('all')}
           ref={selectedCategoryId === 'all' ? activeTabRef : null}
-          className={`flex-shrink-0 flex items-center space-x-1.5 px-3.5 py-2 rounded-full text-xs font-semibold tracking-tight transition-all duration-200 ${
+          className={`flex-shrink-0 flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all duration-150 ${
             selectedCategoryId === 'all'
-              ? 'bg-warmgray-900 text-white shadow-sm'
+              ? 'bg-warmgray-900 text-white shadow-xs'
               : 'bg-white text-warmgray-600 border border-warmgray-200/90 hover:bg-warmgray-100 hover:text-warmgray-900'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5" />
+          <Sparkles className="w-3 h-3" />
           <span>Todo el Menú</span>
         </button>
 
@@ -72,13 +71,13 @@ export const CategoryNav: React.FC<CategoryNavProps> = ({
               key={cat.id}
               ref={isSelected ? activeTabRef : null}
               onClick={() => onSelectCategory(cat.id)}
-              className={`flex-shrink-0 flex items-center space-x-1.5 px-3.5 py-2 rounded-full text-xs font-semibold tracking-tight transition-all duration-200 ${
+              className={`flex-shrink-0 flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all duration-150 ${
                 isSelected
-                  ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/20'
+                  ? 'bg-brand-600 text-white shadow-xs'
                   : 'bg-white text-warmgray-600 border border-warmgray-200/90 hover:bg-warmgray-100 hover:text-warmgray-900'
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-3 h-3" />
               <span>{cat.name}</span>
             </button>
           );

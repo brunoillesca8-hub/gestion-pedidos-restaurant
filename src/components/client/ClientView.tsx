@@ -8,7 +8,7 @@ import { ProductDetailModal } from './ProductDetailModal';
 import { FloatingCartBar } from './FloatingCartBar';
 import { CartDrawer } from './CartDrawer';
 import { OrderSuccessModal } from './OrderSuccessModal';
-import { Search, Sparkles } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 export const ClientView: React.FC = () => {
   const { categories, products } = useOrders();
@@ -20,11 +20,9 @@ export const ClientView: React.FC = () => {
   // Filtrado reactivo por categoría y búsqueda
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
-      // Filtrar por categoría
       const matchesCategory =
         selectedCategoryId === 'all' || product.category_id === selectedCategoryId;
 
-      // Filtrar por texto de búsqueda
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !query ||
@@ -36,74 +34,57 @@ export const ClientView: React.FC = () => {
     });
   }, [products, selectedCategoryId, searchQuery]);
 
-  // Agrupación por categoría cuando se ve "Todo el menú" y no hay búsqueda
   const showGrouped = selectedCategoryId === 'all' && !searchQuery.trim();
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] pb-24">
-      {/* Header & Table Badge */}
+      {/* Header Ultra Compacto */}
       <Header
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
 
-      {/* Categories Sticky Bar */}
+      {/* Categories Slim Sticky Bar */}
       <CategoryNav
         categories={categories}
         selectedCategoryId={selectedCategoryId}
         onSelectCategory={setSelectedCategoryId}
       />
 
-      {/* Main Catalog Container */}
-      <main className="max-w-md md:max-w-4xl mx-auto px-4 pt-4">
+      {/* Main Catalog Container (Dense 3-Column Grid) */}
+      <main className="max-w-4xl mx-auto px-2 pt-2.5">
         
-        {/* Banner de Bienvenida o Búsqueda activa */}
-        {searchQuery ? (
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-warmgray-500 uppercase tracking-wider">
+        {/* Banner de búsqueda si hay filtro de texto */}
+        {searchQuery && (
+          <div className="mb-2 flex items-center justify-between px-1">
+            <h2 className="text-[11px] font-semibold text-warmgray-500 uppercase tracking-wider">
               Resultados para "{searchQuery}" ({filteredProducts.length})
             </h2>
             <button
               onClick={() => setSearchQuery('')}
-              className="text-xs text-brand-600 font-medium hover:underline"
+              className="text-[11px] text-brand-600 font-semibold hover:underline"
             >
-              Limpiar búsqueda
+              Limpiar
             </button>
           </div>
-        ) : selectedCategoryId === 'all' ? (
-          <div className="mb-6 bg-gradient-to-r from-brand-600 to-brand-700 text-white rounded-3xl p-5 shadow-lg shadow-brand-600/15 relative overflow-hidden">
-            <div className="relative z-10 max-w-xs">
-              <span className="inline-flex items-center space-x-1 bg-white/20 backdrop-blur-xs text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full mb-2">
-                <Sparkles className="w-3 h-3" />
-                <span>Experiencia Gastronómica</span>
-              </span>
-              <h2 className="font-display font-bold text-lg md:text-xl leading-tight">
-                Pide directo a la cocina desde tu mesa
-              </h2>
-              <p className="text-xs text-brand-100 mt-1">
-                Selecciona tus platos favoritos, personalízalos a tu gusto y nosotros nos encargamos del resto.
-              </p>
-            </div>
-            <div className="absolute right-[-20px] bottom-[-20px] w-36 h-36 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
-          </div>
-        ) : null}
+        )}
 
         {/* Listado de Productos */}
         {filteredProducts.length === 0 ? (
-          <div className="py-16 text-center">
-            <div className="w-14 h-14 bg-warmgray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-warmgray-400">
-              <Search className="w-6 h-6" />
+          <div className="py-12 text-center">
+            <div className="w-10 h-10 bg-warmgray-100 rounded-full flex items-center justify-center mx-auto mb-2 text-warmgray-400">
+              <Search className="w-5 h-5" />
             </div>
-            <h3 className="font-display font-semibold text-warmgray-800 text-base">
+            <h3 className="font-display font-semibold text-warmgray-800 text-sm">
               No encontramos platos
             </h3>
-            <p className="text-xs text-warmgray-500 max-w-xs mx-auto mt-1">
+            <p className="text-xs text-warmgray-500 max-w-xs mx-auto mt-0.5">
               Intenta buscar con otros términos o selecciona una categoría diferente.
             </p>
           </div>
         ) : showGrouped ? (
-          // Vista agrupada por secciones de categorías
-          <div className="space-y-8">
+          // Vista agrupada densa de 3 columnas
+          <div className="space-y-4">
             {categories
               .filter(c => c.is_active)
               .map(category => {
@@ -111,17 +92,17 @@ export const ClientView: React.FC = () => {
                 if (categoryProducts.length === 0) return null;
 
                 return (
-                  <section key={category.id} className="space-y-3">
-                    <div className="flex items-center justify-between border-b border-warmgray-200/70 pb-2">
-                      <h3 className="font-display font-bold text-base md:text-lg text-warmgray-900">
+                  <section key={category.id} className="space-y-2">
+                    <div className="flex items-center justify-between border-b border-warmgray-200/60 pb-1 px-0.5">
+                      <h3 className="font-display font-bold text-xs sm:text-sm text-warmgray-900">
                         {category.name}
                       </h3>
-                      <span className="text-xs text-warmgray-400 font-medium">
+                      <span className="text-[10px] text-warmgray-400 font-medium">
                         {categoryProducts.length} {categoryProducts.length === 1 ? 'opción' : 'opciones'}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3.5">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
                       {categoryProducts.map(product => (
                         <ProductCard
                           key={product.id}
@@ -135,8 +116,8 @@ export const ClientView: React.FC = () => {
               })}
           </div>
         ) : (
-          // Grid regular cuando hay filtro o búsqueda
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3.5">
+          // Grid regular denso de 3 columnas cuando hay filtro o búsqueda
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
             {filteredProducts.map(product => (
               <ProductCard
                 key={product.id}

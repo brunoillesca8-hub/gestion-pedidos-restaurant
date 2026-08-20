@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Category, Product, Order, OrderStatus, OrderItem, ViewRole, RestaurantSettings } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS } from '../data/initialData';
 import { playOrderChime } from '../utils/soundAlert';
@@ -116,15 +116,22 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  const [tableNumber, setTableNumberState] = useState<string>('4');
+  const [tableNumber, setTableNumberState] = useState<string>('12');
   const [isTableLockedByQR, setIsTableLockedByQR] = useState(false);
   const [newOrderAlertId, setNewOrderAlertId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Cargar datos iniciales desde la API / Turso DB si está disponible
-  const fetchRemoteData = useCallback(async () => {
+  // Referencia a las órdenes actuales para comparar en el polling en tiempo real
+  const ordersRef = useRef<Order[]>(orders);
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
+
+  // Cargar datos iniciales desde la API / Turso DB
+  const fetchRemoteData = useCallback(async (isBackgroundPoll = false) => {
     try {
-      setIsLoading(true);
+      if (!isBackgroundPoll) setIsLoading(true);
+
       const [settingsRes, catRes, prodRes, ordRes] = await Promise.allSettled([
         fetch('/api/settings').then(r => (r.ok ? r.json() : null)),
         fetch('/api/categories').then(r => (r.ok ? r.json() : null)),
@@ -142,20 +149,43 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setProducts(prodRes.value);
       }
       if (ordRes.status === 'fulfilled' && ordRes.value) {
-        setOrders(ordRes.value);
+        const remoteOrders: Order[] = ordRes.value;
+        const currentIds = new Set(ordersRef.current.map(o => o.id));
+
+        // Detectar si hay una comanda nueva que vino de otro dispositivo (ej. celular a PC)
+        const newlyArrivedOrder = remoteOrders.find(ro => !currentIds.has(ro.id));
+
+        if (newlyArrivedOrder && isBackgroundPoll) {
+          console.log('🔔 Nueva comanda detectada desde la nube:', newlyArrivedOrder.id);
+          setNewOrderAlertId(newlyArrivedOrder.id);
+          playOrderChime();
+        }
+
+        setOrders(remoteOrders);
       }
-    } catch (e) {
-      console.warn('API no disponible temporalmente, usando estado local.');
+    } catch {
+      // Usar estado local si está offline
     } finally {
-      setIsLoading(false);
+      if (!isBackgroundPoll) setIsLoading(false);
     }
   }, []);
 
+  // Fetch inicial
   useEffect(() => {
-    fetchRemoteData();
+    fetchRemoteData(false);
   }, [fetchRemoteData]);
 
-  // Actualizar Ajustes del Restaurante (Nombre, Eslogan, Contraseñas)
+  // POLLING EN TIEMPO REAL ENTRE DISPOSITIVOS (Celular ➔ Computador / Tablet)
+  useEffect(() => {
+    // Polling cada 2.5 segundos para que la cocina reciba inmediatamente los pedidos de los celulares
+    const interval = setInterval(() => {
+      fetchRemoteData(true);
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [fetchRemoteData]);
+
+  // Actualizar Ajustes del Restaurante
   const updateRestaurantSettings = useCallback(async (newSettings: Partial<RestaurantSettings>) => {
     setRestaurantSettings(prev => {
       const updated = { ...prev, ...newSettings };
@@ -176,12 +206,10 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newSettings)
       });
-    } catch (e) {
-      console.warn('No se pudo sincronizar settings con la nube:', e);
-    }
+    } catch {}
   }, []);
 
-  // Detección de mesa por parámetro URL (ej: ?mesa=5 o ?table=5)
+  // Detección de mesa por parámetro URL (ej: ?mesa=12 o ?table=12)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mesaParam = params.get('mesa') || params.get('table');
@@ -202,7 +230,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem(STORAGE_KEYS.TABLE, table);
   };
 
-  // Sincronización en tiempo real vía BroadcastChannel (Cross-tab sync)
+  // BroadcastChannel para pestañas locales
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
 
@@ -283,7 +311,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, [isAdminAuthenticated]);
 
-  // Crear nuevo pedido
+  // Crear nuevo pedido (Celular ➔ Base de Datos Turso en la nube)
   const createOrder = useCallback(async (
     table: string | number,
     items: OrderItem[],
@@ -305,14 +333,14 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setNewOrderAlertId(newOrder.id);
     playOrderChime();
 
-    // Notificar a otras pestañas/pantallas
+    // Notificar a otras pestañas
     if (typeof BroadcastChannel !== 'undefined') {
       const channel = new BroadcastChannel('restaurant_live_sync_channel');
       channel.postMessage({ type: 'NEW_ORDER', payload: newOrder });
       channel.close();
     }
 
-    // Guardar en Turso DB vía API
+    // Guardar en Turso DB vía API para que el computador lo reciba
     try {
       await fetch('/api/orders', {
         method: 'POST',
@@ -320,7 +348,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         body: JSON.stringify(newOrder)
       });
     } catch (e) {
-      console.warn('Guardado offline / memoria local');
+      console.warn('Error enviando a la API:', e);
     }
 
     return newOrder;
@@ -347,7 +375,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, []);
 
-  // Cambiar disponibilidad de producto (Disponible / Agotado)
+  // Cambiar disponibilidad de producto
   const toggleProductAvailability = useCallback(async (productId: string) => {
     setProducts(prev => {
       const updated = prev.map(prod =>
