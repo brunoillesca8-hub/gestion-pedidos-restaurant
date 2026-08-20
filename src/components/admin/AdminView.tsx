@@ -21,7 +21,9 @@ import {
   EyeOff,
   BarChart3,
   Sliders,
-  Lock
+  Lock,
+  ChefHat,
+  ArrowLeft
 } from 'lucide-react';
 
 export const AdminView: React.FC = () => {
@@ -74,9 +76,43 @@ export const AdminView: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] p-4 md:p-6 pb-24">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[#FAF8F5] p-3 md:p-6 pb-24">
+      <div className="max-w-6xl mx-auto space-y-4 md:space-y-6">
         
+        {/* Top Staff Navigation Bar */}
+        <div className="flex items-center justify-between bg-warmgray-900 text-white px-4 py-2 rounded-2xl">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCurrentRole('client')}
+              className="flex items-center space-x-1 text-xs text-warmgray-300 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Volver a la Carta</span>
+            </button>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCurrentRole('kds')}
+              className="flex items-center space-x-1.5 px-3 py-1 bg-warmgray-800 hover:bg-warmgray-700 text-warmgray-200 rounded-xl text-xs font-semibold transition-all"
+            >
+              <ChefHat className="w-3.5 h-3.5 text-brand-400" />
+              <span>Ir a Cocina (KDS)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsAdminAuthenticated(false);
+                setCurrentRole('client');
+              }}
+              className="p-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 text-red-300 text-xs transition-colors"
+              title="Cerrar sesión de administrador"
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
         {/* Header Panel Admin */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-3xl border border-warmgray-200 shadow-xs">
           <div className="flex items-center space-x-3">
@@ -121,18 +157,6 @@ export const AdminView: React.FC = () => {
                 <span>Nueva Categoría</span>
               </button>
             )}
-
-            <button
-              onClick={() => {
-                setIsAdminAuthenticated(false);
-                setCurrentRole('client');
-              }}
-              className="py-2.5 px-3 rounded-xl bg-warmgray-100 hover:bg-warmgray-200 text-warmgray-700 text-xs font-semibold flex items-center space-x-1 transition-colors"
-              title="Cerrar sesión de administrador"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Bloquear</span>
-            </button>
           </div>
         </div>
 
@@ -395,13 +419,13 @@ export const AdminView: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 3: ANALÍTICAS & GRÁFICOS INTERACTIVOS */}
+        {/* TAB 3: ANALÍTICAS */}
         {activeTab === 'analytics' && <AnalyticsDashboard />}
 
-        {/* TAB 4: AJUSTES & SEGURIDAD */}
+        {/* TAB 4: AJUSTES */}
         {activeTab === 'settings' && <SettingsTab />}
 
-        {/* Modales de formulario */}
+        {/* Modales */}
         <ProductFormModal
           isOpen={isProductModalOpen}
           onClose={() => setIsProductModalOpen(false)}

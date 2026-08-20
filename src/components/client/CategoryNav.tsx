@@ -42,7 +42,7 @@ export const CategoryNav: React.FC<CategoryNavProps> = ({
   const activeCategories = categories.filter(c => c.is_active);
 
   return (
-    <nav className="sticky top-[72px] z-20 bg-[#FAF8F5]/95 backdrop-blur-md py-1.5 border-b border-warmgray-200/70 shadow-2xs">
+    <nav className="sticky top-[53px] z-20 bg-[#FAF8F5]/95 backdrop-blur-md py-1.5 border-b border-warmgray-200/70 shadow-2xs">
       <div
         ref={containerRef}
         className="max-w-4xl mx-auto px-2 flex items-center space-x-1.5 overflow-x-auto no-scrollbar scroll-smooth"

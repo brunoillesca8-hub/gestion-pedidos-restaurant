@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { useCart } from '../../context/CartContext';
-import { Sparkles, QrCode, Search, X, Coffee, ChevronDown, ShoppingBag } from 'lucide-react';
+import { QrCode, Search, X, Coffee, ChevronDown, ShoppingBag } from 'lucide-react';
 import { TableSelectorModal } from './TableSelectorModal';
 
 interface HeaderProps {
@@ -17,25 +17,25 @@ export const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange }) =
 
   return (
     <>
-      <header className="bg-white border-b border-warmgray-200/80 sticky top-[33px] z-30 shadow-xs">
-        <div className="max-w-4xl mx-auto px-3 py-1.5">
+      <header className="bg-white border-b border-warmgray-200/80 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-4xl mx-auto px-3 py-2">
           
           {/* Ultra Compact Single Line Header */}
           <div className="flex items-center justify-between gap-2">
             
             {/* Left: Logo & Name */}
             <div className="flex items-center space-x-2 min-w-0">
-              <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-brand-600 to-brand-400 text-white flex items-center justify-center shadow-xs flex-shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-brand-400 text-white flex items-center justify-center shadow-xs flex-shrink-0">
                 <Coffee className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center space-x-1">
+                <div className="flex items-center space-x-1.5">
                   <h1 className="font-display font-bold text-xs sm:text-sm text-warmgray-900 leading-none truncate">
                     {restaurantSettings.name || 'Café & Bistró Bellavista'}
                   </h1>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" title="Abierto"></span>
                 </div>
-                <p className="text-[10px] text-warmgray-400 truncate leading-tight">
+                <p className="text-[10px] text-warmgray-400 truncate leading-tight mt-0.5">
                   {restaurantSettings.tagline || 'Especialidad & Pastelería'}
                 </p>
               </div>
@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange }) =
               {/* Mesa Badge */}
               <button
                 onClick={() => setIsTableModalOpen(true)}
-                className="flex items-center space-x-1 bg-brand-50 hover:bg-brand-100/80 border border-brand-200/80 text-brand-900 px-2 py-1 rounded-full transition-all shadow-2xs"
+                className="flex items-center space-x-1 bg-brand-50 hover:bg-brand-100/80 border border-brand-200/80 text-brand-900 px-2.5 py-1 rounded-full transition-all shadow-2xs"
               >
                 <QrCode className="w-3 h-3 text-brand-600" />
                 <span className="font-bold text-[11px]">
@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange }) =
 
           {/* Search Input */}
           {isSearchOpen && (
-            <div className="mt-1.5 pt-1.5 border-t border-warmgray-100">
+            <div className="mt-2 pt-1.5 border-t border-warmgray-100">
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-warmgray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input

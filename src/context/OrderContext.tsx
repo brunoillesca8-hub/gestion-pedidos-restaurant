@@ -52,7 +52,6 @@ const STORAGE_KEYS = {
   CATEGORIES: 'restaurant_demo_categories_v1',
   PRODUCTS: 'restaurant_demo_products_v1',
   ORDERS: 'restaurant_demo_orders_v1',
-  ROLE: 'restaurant_demo_role_v1',
   TABLE: 'restaurant_demo_table_v1',
   KDS_AUTH: 'restaurant_demo_kds_auth_v1',
   ADMIN_AUTH: 'restaurant_demo_admin_auth_v1'
@@ -68,40 +67,23 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  const [categories, setCategories] = useState<Category[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-      return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
-    } catch {
-      return INITIAL_CATEGORIES;
-    }
-  });
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
 
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-    } catch {
-      return INITIAL_PRODUCTS;
-    }
-  });
-
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ORDERS);
-      return saved ? JSON.parse(saved) : INITIAL_ORDERS;
-    } catch {
-      return INITIAL_ORDERS;
-    }
-  });
-
+  // SIEMPRE INICIAR EN VISTA CLIENTE POR DEFECTO PARA LOS COMENSALES
   const [currentRole, setCurrentRole] = useState<ViewRole>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ROLE);
-      return (saved as ViewRole) || 'client';
-    } catch {
-      return 'client';
+    const params = new URLSearchParams(window.location.search);
+    const roleParam = params.get('role') || params.get('view');
+    const path = window.location.pathname.toLowerCase();
+
+    if (roleParam === 'kds' || roleParam === 'cocina' || params.has('kds') || params.has('cocina') || path.includes('kds') || path.includes('cocina')) {
+      return 'kds';
     }
+    if (roleParam === 'admin' || params.has('admin') || path.includes('admin')) {
+      return 'admin';
+    }
+    return 'client';
   });
 
   const [isKDSAuthenticated, setIsKDSAuthenticated] = useState<boolean>(() => {
@@ -126,7 +108,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isLoading, setIsLoading] = useState(false);
 
   // Registro de IDs conocidos para alertar con timbre en el KDS
-  const knownOrderIdsRef = useRef<Set<string>>(new Set(orders.map(o => o.id)));
+  const knownOrderIdsRef = useRef<Set<string>>(new Set(INITIAL_ORDERS.map(o => o.id)));
 
   // Cargar datos directamente desde Turso Cloud
   const fetchRemoteData = useCallback(async (isBackgroundPoll = false) => {
@@ -178,7 +160,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, [fetchRemoteData]);
 
-  // POLLING EN VIVO ULTRA RÁPIDO (Cada 1.5 segundos) para sincronización entre dispositivos
+  // Polling cada 1.5s
   useEffect(() => {
     const interval = setInterval(() => {
       fetchRemoteData(true);
@@ -200,7 +182,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await updateSettingsInTurso(newSettings);
   }, []);
 
-  // Detección de mesa por parámetro URL
+  // Detección de mesa por parámetro URL (ej: ?mesa=12 o ?table=12)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mesaParam = params.get('mesa') || params.get('table');
@@ -220,12 +202,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTableNumberState(table);
     localStorage.setItem(STORAGE_KEYS.TABLE, table);
   };
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.ROLE, currentRole);
-    } catch {}
-  }, [currentRole]);
 
   useEffect(() => {
     try {
