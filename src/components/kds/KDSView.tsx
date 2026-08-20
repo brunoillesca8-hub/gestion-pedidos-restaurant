@@ -1,14 +1,35 @@
 import React, { useState } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { OrderCard } from './OrderCard';
+import { KDSLoginModal } from './KDSLoginModal';
 import { playOrderChime } from '../../utils/soundAlert';
-import { ChefHat, Volume2, Search, Filter, RefreshCw, CheckCircle2, Clock } from 'lucide-react';
+import { ChefHat, Volume2, Search, CheckCircle2, Lock, LogOut } from 'lucide-react';
 import { OrderStatus } from '../../types';
 
 export const KDSView: React.FC = () => {
-  const { orders, updateOrderStatus, newOrderAlertId, clearNewOrderAlert } = useOrders();
+  const {
+    orders,
+    updateOrderStatus,
+    newOrderAlertId,
+    clearNewOrderAlert,
+    isKDSAuthenticated,
+    setIsKDSAuthenticated,
+    setCurrentRole,
+    restaurantSettings
+  } = useOrders();
+
   const [filterStatus, setFilterStatus] = useState<OrderStatus | 'activas' | 'todas'>('activas');
   const [searchTable, setSearchTable] = useState('');
+
+  // Proteger acceso: si no está autenticado, mostrar modal de contraseña
+  if (!isKDSAuthenticated) {
+    return (
+      <KDSLoginModal
+        onSuccess={() => setIsKDSAuthenticated(true)}
+        onCancel={() => setCurrentRole('client')}
+      />
+    );
+  }
 
   const filterTabs: { id: OrderStatus | 'activas' | 'todas'; label: string; count: number }[] = [
     {
@@ -76,17 +97,17 @@ export const KDSView: React.FC = () => {
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="font-display font-bold text-xl text-white">
-                  KDS • Monitor de Cocina & Barra
+                  {restaurantSettings.name || 'Cocina & Barra'} • KDS en Vivo
                 </h2>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
               </div>
               <p className="text-xs text-warmgray-400">
-                Recepción y despacho de comandas en tiempo real
+                Monitor de comandas en tiempo real para chefs y baristas
               </p>
             </div>
           </div>
 
-          {/* Quick Tools: Test Sound & Search */}
+          {/* Quick Tools: Test Sound, Search, & Lock KDS */}
           <div className="flex flex-wrap items-center gap-3">
             
             {/* Search */}
@@ -109,6 +130,19 @@ export const KDSView: React.FC = () => {
             >
               <Volume2 className="w-4 h-4 text-brand-400" />
               <span>Probar Timbre</span>
+            </button>
+
+            {/* Lock / Exit KDS Button */}
+            <button
+              onClick={() => {
+                setIsKDSAuthenticated(false);
+                setCurrentRole('client');
+              }}
+              className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 text-xs font-semibold transition-colors"
+              title="Bloquear y salir de cocina"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Bloquear KDS</span>
             </button>
 
           </div>

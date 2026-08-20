@@ -9,8 +9,23 @@ export const db = createClient({
   authToken
 });
 
+export const DEFAULT_SETTINGS = {
+  name: 'Café & Bistró Bellavista',
+  tagline: 'Especialidad & Pastelería',
+  admin_pin: '1234',
+  kds_pin: '12345',
+  currency_symbol: '$'
+};
+
 export async function ensureDatabaseReady() {
   try {
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+
     await db.execute(`
       CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
@@ -57,6 +72,13 @@ export async function ensureDatabaseReady() {
         subtotal REAL NOT NULL
       );
     `);
+
+    for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+      await db.execute({
+        sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
+        args: [key, String(value)]
+      });
+    }
 
     const check = await db.execute('SELECT COUNT(*) as count FROM categories');
     if (Number(check.rows[0].count) === 0) {

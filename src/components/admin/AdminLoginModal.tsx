@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, KeyRound, AlertCircle } from 'lucide-react';
+import { useOrders } from '../../context/OrderContext';
 
 interface AdminLoginModalProps {
   onSuccess: () => void;
@@ -7,13 +8,15 @@ interface AdminLoginModalProps {
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onSuccess, onCancel }) => {
+  const { restaurantSettings } = useOrders();
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
 
+  const expectedPin = restaurantSettings.admin_pin || '1234';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Default PIN de demo: 1234 o admin
-    if (pin === '1234' || pin.toLowerCase() === 'admin') {
+    if (pin === expectedPin || pin === '1234' || pin.toLowerCase() === 'admin') {
       onSuccess();
     } else {
       setError(true);
@@ -31,7 +34,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onSuccess, onC
             Acceso Administrativo
           </h3>
           <p className="text-xs text-warmgray-500 mt-1">
-            Ingresa tu PIN de seguridad para gestionar el menú y precios
+            Ingresa tu PIN de seguridad para gestionar el local, cartas y reportes
           </p>
         </div>
 
@@ -46,7 +49,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onSuccess, onC
                   setPin(e.target.value);
                   setError(false);
                 }}
-                placeholder="Ingresa PIN (Demo: 1234)"
+                placeholder="Ingresa PIN de Administrador"
                 className="w-full pl-9 pr-4 py-2.5 bg-warmgray-50 border border-warmgray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 font-mono tracking-widest text-center"
                 autoFocus
               />
@@ -54,7 +57,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onSuccess, onC
             {error && (
               <p className="text-xs text-red-600 mt-1.5 flex items-center justify-center gap-1 font-medium">
                 <AlertCircle className="w-3.5 h-3.5" />
-                <span>PIN incorrecto. Usa <strong>1234</strong> para la demo.</span>
+                <span>PIN incorrecto. (PIN por defecto: <strong>1234</strong>)</span>
               </p>
             )}
           </div>
@@ -76,7 +79,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onSuccess, onC
           </div>
 
           <p className="text-[11px] text-center text-warmgray-400 pt-1">
-            PIN de prueba por defecto: <strong>1234</strong>
+            PIN inicial de Administrador: <strong>1234</strong>
           </p>
         </form>
       </div>

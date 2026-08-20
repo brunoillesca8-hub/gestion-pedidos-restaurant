@@ -9,7 +9,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange }) => {
-  const { tableNumber, isTableLockedByQR } = useOrders();
+  const { tableNumber, isTableLockedByQR, restaurantSettings } = useOrders();
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -18,7 +18,7 @@ export const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange }) =
       <header className="bg-white border-b border-warmgray-200 sticky top-[45px] z-30 shadow-xs">
         <div className="max-w-md md:max-w-4xl mx-auto px-4 py-3">
           
-          {/* Top Bar: Restaurant info & Table Badge */}
+          {/* Top Bar: Dynamic Restaurant info & Table Badge */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-400 text-white flex items-center justify-center shadow-md shadow-brand-500/20">
@@ -27,12 +27,12 @@ export const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange }) =
               <div>
                 <div className="flex items-center space-x-1.5">
                   <h1 className="font-display font-bold text-base md:text-lg text-warmgray-900 leading-tight">
-                    Café & Bistró Bellavista
+                    {restaurantSettings.name || 'Café & Bistró'}
                   </h1>
                   <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                 </div>
                 <p className="text-xs text-warmgray-500 flex items-center gap-1">
-                  <span>Especialidad & Pastelería</span>
+                  <span>{restaurantSettings.tagline || 'Especialidad & Pastelería'}</span>
                   <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
                   <span className="text-emerald-600 font-medium">Abierto</span>
                 </p>

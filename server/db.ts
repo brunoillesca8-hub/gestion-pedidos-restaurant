@@ -12,9 +12,24 @@ export const db = createClient({
   authToken
 });
 
+export const DEFAULT_SETTINGS = {
+  name: 'Café & Bistró Bellavista',
+  tagline: 'Especialidad & Pastelería',
+  admin_pin: '1234',
+  kds_pin: '12345',
+  currency_symbol: '$'
+};
+
 export async function initDatabase() {
   try {
     // 1. Crear tablas si no existen
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+
     await db.execute(`
       CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
@@ -62,7 +77,15 @@ export async function initDatabase() {
       );
     `);
 
-    // 2. Comprobar si ya existen categorías para sembrar datos
+    // 2. Comprobar e insertar settings por defecto
+    for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+      await db.execute({
+        sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
+        args: [key, String(value)]
+      });
+    }
+
+    // 3. Comprobar si ya existen categorías para sembrar datos
     const checkCat = await db.execute('SELECT COUNT(*) as count FROM categories');
     const count = Number(checkCat.rows[0].count);
 

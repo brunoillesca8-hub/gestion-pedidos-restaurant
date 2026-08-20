@@ -1,14 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Category, Product, Order, OrderStatus, OrderItem, ViewRole } from '../types';
+import { Category, Product, Order, OrderStatus, OrderItem, ViewRole, RestaurantSettings } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS } from '../data/initialData';
 import { playOrderChime } from '../utils/soundAlert';
 
 interface OrderContextType {
+  restaurantSettings: RestaurantSettings;
+  updateRestaurantSettings: (newSettings: Partial<RestaurantSettings>) => Promise<void>;
   categories: Category[];
   products: Product[];
   orders: Order[];
   currentRole: ViewRole;
   setCurrentRole: (role: ViewRole) => void;
+  isKDSAuthenticated: boolean;
+  setIsKDSAuthenticated: (auth: boolean) => void;
+  isAdminAuthenticated: boolean;
+  setIsAdminAuthenticated: (auth: boolean) => void;
   tableNumber: string;
   setTableNumber: (table: string) => void;
   isTableLockedByQR: boolean;
@@ -30,14 +36,34 @@ interface OrderContextType {
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
+  SETTINGS: 'restaurant_demo_settings_v1',
   CATEGORIES: 'restaurant_demo_categories_v1',
   PRODUCTS: 'restaurant_demo_products_v1',
   ORDERS: 'restaurant_demo_orders_v1',
   ROLE: 'restaurant_demo_role_v1',
-  TABLE: 'restaurant_demo_table_v1'
+  TABLE: 'restaurant_demo_table_v1',
+  KDS_AUTH: 'restaurant_demo_kds_auth_v1',
+  ADMIN_AUTH: 'restaurant_demo_admin_auth_v1'
+};
+
+const DEFAULT_SETTINGS: RestaurantSettings = {
+  name: 'Café & Bistró Bellavista',
+  tagline: 'Especialidad & Pastelería',
+  admin_pin: '1234',
+  kds_pin: '12345',
+  currency_symbol: '$'
 };
 
 export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [restaurantSettings, setRestaurantSettings] = useState<RestaurantSettings>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  });
+
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
@@ -74,6 +100,22 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
+  const [isKDSAuthenticated, setIsKDSAuthenticated] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(STORAGE_KEYS.KDS_AUTH) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(STORAGE_KEYS.ADMIN_AUTH) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [tableNumber, setTableNumberState] = useState<string>('4');
   const [isTableLockedByQR, setIsTableLockedByQR] = useState(false);
   const [newOrderAlertId, setNewOrderAlertId] = useState<string | null>(null);
@@ -83,12 +125,16 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchRemoteData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [catRes, prodRes, ordRes] = await Promise.allSettled([
+      const [settingsRes, catRes, prodRes, ordRes] = await Promise.allSettled([
+        fetch('/api/settings').then(r => (r.ok ? r.json() : null)),
         fetch('/api/categories').then(r => (r.ok ? r.json() : null)),
         fetch('/api/products').then(r => (r.ok ? r.json() : null)),
         fetch('/api/orders').then(r => (r.ok ? r.json() : null))
       ]);
 
+      if (settingsRes.status === 'fulfilled' && settingsRes.value) {
+        setRestaurantSettings(prev => ({ ...prev, ...settingsRes.value }));
+      }
       if (catRes.status === 'fulfilled' && catRes.value && catRes.value.length > 0) {
         setCategories(catRes.value);
       }
@@ -108,6 +154,32 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     fetchRemoteData();
   }, [fetchRemoteData]);
+
+  // Actualizar Ajustes del Restaurante (Nombre, Eslogan, Contraseñas)
+  const updateRestaurantSettings = useCallback(async (newSettings: Partial<RestaurantSettings>) => {
+    setRestaurantSettings(prev => {
+      const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+      } catch {}
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('restaurant_live_sync_channel');
+        channel.postMessage({ type: 'UPDATE_SETTINGS', payload: updated });
+        channel.close();
+      }
+      return updated;
+    });
+
+    try {
+      await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      });
+    } catch (e) {
+      console.warn('No se pudo sincronizar settings con la nube:', e);
+    }
+  }, []);
 
   // Detección de mesa por parámetro URL (ej: ?mesa=5 o ?table=5)
   useEffect(() => {
@@ -149,11 +221,14 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setOrders(prev =>
           prev.map(o => (o.id === payload.orderId ? { ...o, status: payload.status } : o))
         );
+      } else if (type === 'UPDATE_SETTINGS') {
+        setRestaurantSettings(payload);
       } else if (type === 'UPDATE_PRODUCTS') {
         setProducts(payload);
       } else if (type === 'UPDATE_CATEGORIES') {
         setCategories(payload);
       } else if (type === 'RESET_DATA') {
+        setRestaurantSettings(DEFAULT_SETTINGS);
         setCategories(INITIAL_CATEGORIES);
         setProducts(INITIAL_PRODUCTS);
         setOrders(INITIAL_ORDERS);
@@ -166,6 +241,12 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   // Persistir cambios en localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(restaurantSettings));
+    } catch {}
+  }, [restaurantSettings]);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
@@ -189,6 +270,18 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.setItem(STORAGE_KEYS.ROLE, currentRole);
     } catch {}
   }, [currentRole]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEYS.KDS_AUTH, isKDSAuthenticated ? 'true' : 'false');
+    } catch {}
+  }, [isKDSAuthenticated]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, isAdminAuthenticated ? 'true' : 'false');
+    } catch {}
+  }, [isAdminAuthenticated]);
 
   // Crear nuevo pedido
   const createOrder = useCallback(async (
@@ -407,9 +500,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Reiniciar datos de demo
   const resetToSeedData = useCallback(async () => {
+    setRestaurantSettings(DEFAULT_SETTINGS);
     setCategories(INITIAL_CATEGORIES);
     setProducts(INITIAL_PRODUCTS);
     setOrders(INITIAL_ORDERS);
+    localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
     localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
     localStorage.removeItem(STORAGE_KEYS.ORDERS);
@@ -430,11 +525,17 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <OrderContext.Provider
       value={{
+        restaurantSettings,
+        updateRestaurantSettings,
         categories,
         products,
         orders,
         currentRole,
         setCurrentRole,
+        isKDSAuthenticated,
+        setIsKDSAuthenticated,
+        isAdminAuthenticated,
+        setIsAdminAuthenticated,
         tableNumber,
         setTableNumber,
         isTableLockedByQR,

@@ -2,27 +2,54 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { db, initDatabase } from './db';
-import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS } from '../src/data/initialData';
+import { db, initDatabase, DEFAULT_SETTINGS } from './db';
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST', 'PATCH', 'DELETE']
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT']
   }
 });
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Support base64 photo uploads from camera
+app.use(express.json({ limit: '10mb' }));
 
 // Inicializar tablas y datos
 initDatabase();
 
-// --- API REST Endpoints respaldados por Turso ---
+// --- 0. Ajustes del Local (Nombre, Eslogan, Contraseñas) ---
+app.get('/api/settings', async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM settings');
+    const settingsMap: Record<string, string> = { ...DEFAULT_SETTINGS };
+    result.rows.forEach(r => {
+      settingsMap[String(r.key)] = String(r.value);
+    });
+    res.json(settingsMap);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al consultar ajustes' });
+  }
+});
 
-// 1. Categorías
+app.patch('/api/settings', async (req, res) => {
+  try {
+    const updates = req.body;
+    for (const [key, value] of Object.entries(updates)) {
+      await db.execute({
+        sql: 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        args: [key, String(value)]
+      });
+    }
+    io.emit('settings_updated', updates);
+    res.json({ success: true, updates });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al actualizar ajustes' });
+  }
+});
+
+// --- 1. Categorías ---
 app.get('/api/categories', async (req, res) => {
   try {
     const result = await db.execute('SELECT * FROM categories ORDER BY order_index ASC');
@@ -86,7 +113,7 @@ app.delete('/api/categories/:id', async (req, res) => {
   }
 });
 
-// 2. Productos
+// --- 2. Productos ---
 app.get('/api/products', async (req, res) => {
   try {
     const result = await db.execute('SELECT * FROM products');
@@ -199,7 +226,7 @@ app.delete('/api/products/:id', async (req, res) => {
   }
 });
 
-// 3. Comandas / Pedidos
+// --- 3. Comandas / Pedidos ---
 app.get('/api/orders', async (req, res) => {
   try {
     const ordersRes = await db.execute('SELECT * FROM orders ORDER BY created_at DESC');

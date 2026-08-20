@@ -1,5 +1,13 @@
 export type OrderStatus = 'pendiente' | 'preparando' | 'entregado' | 'cerrado';
 
+export interface RestaurantSettings {
+  name: string;
+  tagline: string;
+  admin_pin: string;
+  kds_pin: string;
+  currency_symbol?: string;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -21,6 +29,7 @@ export interface Product {
 
 export interface OrderItem {
   id: string;
+  order_id?: string;
   product_id: string;
   product_name: string;
   product_image?: string;

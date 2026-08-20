@@ -5,7 +5,8 @@ import { formatCurrency } from '../../utils/formatters';
 import { AdminLoginModal } from './AdminLoginModal';
 import { ProductFormModal } from './ProductFormModal';
 import { CategoryFormModal } from './CategoryFormModal';
-import { MetricsOverview } from './MetricsOverview';
+import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { SettingsTab } from './SettingsTab';
 import {
   Settings,
   Plus,
@@ -17,7 +18,10 @@ import {
   CheckCircle,
   XCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  BarChart3,
+  Sliders,
+  Lock
 } from 'lucide-react';
 
 export const AdminView: React.FC = () => {
@@ -31,11 +35,13 @@ export const AdminView: React.FC = () => {
     addCategory,
     updateCategory,
     deleteCategory,
-    setCurrentRole
+    isAdminAuthenticated,
+    setIsAdminAuthenticated,
+    setCurrentRole,
+    restaurantSettings
   } = useOrders();
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeTab, setActiveTab] = useState<'products' | 'categories'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'analytics' | 'settings'>('products');
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
@@ -46,10 +52,10 @@ export const AdminView: React.FC = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
 
-  if (!isAuthenticated) {
+  if (!isAdminAuthenticated) {
     return (
       <AdminLoginModal
-        onSuccess={() => setIsAuthenticated(true)}
+        onSuccess={() => setIsAdminAuthenticated(true)}
         onCancel={() => setCurrentRole('client')}
       />
     );
@@ -78,48 +84,63 @@ export const AdminView: React.FC = () => {
               <Settings className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="font-display font-bold text-xl text-warmgray-900">
-                Panel de Administración & Menú
-              </h2>
+              <div className="flex items-center space-x-2">
+                <h2 className="font-display font-bold text-xl text-warmgray-900">
+                  {restaurantSettings.name || 'Panel de Administración'}
+                </h2>
+              </div>
               <p className="text-xs text-warmgray-500">
-                Control de productos, categorías, precios y disponibilidad en tiempo real
+                Control de productos, categorías, reportes financieros y seguridad
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => {
-                setProductToEdit(null);
-                setIsProductModalOpen(true);
-              }}
-              className="py-2.5 px-3.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-600/20 transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Nuevo Producto</span>
-            </button>
+            {activeTab === 'products' && (
+              <button
+                onClick={() => {
+                  setProductToEdit(null);
+                  setIsProductModalOpen(true);
+                }}
+                className="py-2.5 px-3.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-600/20 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nuevo Producto</span>
+              </button>
+            )}
+
+            {activeTab === 'categories' && (
+              <button
+                onClick={() => {
+                  setCategoryToEdit(null);
+                  setIsCategoryModalOpen(true);
+                }}
+                className="py-2.5 px-3.5 rounded-xl bg-warmgray-900 hover:bg-black text-white text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Nueva Categoría</span>
+              </button>
+            )}
 
             <button
               onClick={() => {
-                setCategoryToEdit(null);
-                setIsCategoryModalOpen(true);
+                setIsAdminAuthenticated(false);
+                setCurrentRole('client');
               }}
-              className="py-2.5 px-3.5 rounded-xl bg-warmgray-900 hover:bg-black text-white text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all"
+              className="py-2.5 px-3 rounded-xl bg-warmgray-100 hover:bg-warmgray-200 text-warmgray-700 text-xs font-semibold flex items-center space-x-1 transition-colors"
+              title="Cerrar sesión de administrador"
             >
-              <Layers className="w-4 h-4" />
-              <span>Nueva Categoría</span>
+              <Lock className="w-3.5 h-3.5" />
+              <span>Bloquear</span>
             </button>
           </div>
         </div>
 
-        {/* Métricas Rápidas */}
-        <MetricsOverview />
-
         {/* Navigation Tabs */}
-        <div className="flex items-center space-x-2 border-b border-warmgray-200 pb-2">
+        <div className="flex items-center space-x-2 border-b border-warmgray-200 pb-2 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('products')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
               activeTab === 'products'
                 ? 'bg-warmgray-900 text-white shadow-sm'
                 : 'text-warmgray-600 hover:bg-warmgray-200'
@@ -131,7 +152,7 @@ export const AdminView: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('categories')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
               activeTab === 'categories'
                 ? 'bg-warmgray-900 text-white shadow-sm'
                 : 'text-warmgray-600 hover:bg-warmgray-200'
@@ -139,6 +160,30 @@ export const AdminView: React.FC = () => {
           >
             <Layers className="w-4 h-4" />
             <span>Categorías ({categories.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              activeTab === 'analytics'
+                ? 'bg-warmgray-900 text-white shadow-sm'
+                : 'text-warmgray-600 hover:bg-warmgray-200'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-emerald-400" />
+            <span>📊 Analíticas & Gráficos</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              activeTab === 'settings'
+                ? 'bg-warmgray-900 text-white shadow-sm'
+                : 'text-warmgray-600 hover:bg-warmgray-200'
+            }`}
+          >
+            <Sliders className="w-4 h-4" />
+            <span>⚙️ Ajustes & Seguridad</span>
           </button>
         </div>
 
@@ -349,6 +394,12 @@ export const AdminView: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* TAB 3: ANALÍTICAS & GRÁFICOS INTERACTIVOS */}
+        {activeTab === 'analytics' && <AnalyticsDashboard />}
+
+        {/* TAB 4: AJUSTES & SEGURIDAD */}
+        {activeTab === 'settings' && <SettingsTab />}
 
         {/* Modales de formulario */}
         <ProductFormModal
